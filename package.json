@@ -1,0 +1,24 @@
+{
+  "name": "booking",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Сервис онлайн-записи: публичная страница мастера + личный кабинет",
+  "scripts": {
+    "dev": "pnpm -r --parallel dev",
+    "build": "pnpm -r build",
+    "lint": "pnpm -r lint",
+    "typecheck": "pnpm -r typecheck",
+    "test": "pnpm -r test",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "db:up": "docker compose up -d db",
+    "db:down": "docker compose down"
+  },
+  "packageManager": "pnpm@12.9.1",
+  "engines": {
+    "node": ">=22"
+  },
+  "devDependencies": {
+    "prettier": "^3.10.1"
+  }
+}

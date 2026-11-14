@@ -1,0 +1,42 @@
+name: CI
+
+# Проверки запускаются на каждый pull request и на каждый пуш в main.
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# Новый пуш в ту же ветку отменяет предыдущий, ещё не завершённый прогон.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      # Версия pnpm берётся из поля packageManager в корневом package.json.
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      # --frozen-lockfile: если package.json и lock-файл расходятся, сборка падает,
+      # а не ставит молча другие версии.
+      - run: pnpm install --frozen-lockfile
+
+      # Prisma-клиент не хранится в репозитории, без него не пройдут типы.
+      - run: pnpm --filter @booking/api db:generate
+        env:
+          DATABASE_URL: postgresql://ci:ci@localhost:5432/ci
+
+      - run: pnpm format:check
+      - run: pnpm lint
+      - run: pnpm typecheck
+      - run: pnpm test
+      - run: pnpm build

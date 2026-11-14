@@ -1,0 +1,121 @@
+// Схема БД сервиса онлайн-записи.
+// После любого изменения: pnpm db:migrate (создаст миграцию и перегенерирует клиент).
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+/// Владелец кабинета (мастер или администратор студии).
+model User {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  passwordHash String
+  name         String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  businesses Business[]
+  sessions   Session[]
+}
+
+/// Refresh-сессия. В базе лежит только хэш токена: утечка БД не даёт войти.
+model Session {
+  id        String   @id @default(uuid())
+  userId    String
+  tokenHash String   @unique
+  userAgent String?
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+/// Бизнес = одна публичная страница записи: /b/{slug}.
+model Business {
+  id          String   @id @default(uuid())
+  ownerId     String
+  slug        String   @unique
+  name        String
+  description String?
+  /// IANA-таймзона, например "Europe/Moscow". Все слоты считаются в ней.
+  timezone    String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  owner        User           @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  services     Service[]
+  workingHours WorkingHours[]
+  bookings     Booking[]
+
+  @@index([ownerId])
+}
+
+model Service {
+  id          String   @id @default(uuid())
+  businessId  String
+  name        String
+  description String?
+  durationMin Int
+  /// Цена в копейках: деньги не хранят во float.
+  priceCents  Int
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  business Business  @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  bookings Booking[]
+
+  @@index([businessId])
+}
+
+/// Рабочий интервал в конкретный день недели. Несколько строк на день = перерыв.
+model WorkingHours {
+  id          String @id @default(uuid())
+  businessId  String
+  /// 0 — понедельник, 6 — воскресенье.
+  weekday     Int
+  /// Минуты от полуночи в таймзоне бизнеса: 600 = 10:00.
+  startMinute Int
+  endMinute   Int
+
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  @@index([businessId, weekday])
+}
+
+enum BookingStatus {
+  PENDING
+  CONFIRMED
+  CANCELLED
+  COMPLETED
+}
+
+model Booking {
+  id          String        @id @default(uuid())
+  businessId  String
+  serviceId   String
+  /// Всегда UTC. В таймзону бизнеса переводим только при показе.
+  startsAt    DateTime
+  endsAt      DateTime
+  status      BookingStatus @default(PENDING)
+  clientName  String
+  clientPhone String
+  clientEmail String?
+  comment     String?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  /// Restrict: услугу с записями нельзя удалить, только выключить (isActive).
+  service  Service  @relation(fields: [serviceId], references: [id], onDelete: Restrict)
+
+  @@index([businessId, startsAt])
+  @@index([serviceId])
+}

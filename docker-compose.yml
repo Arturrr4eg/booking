@@ -1,0 +1,22 @@
+# Локальная инфраструктура для разработки. Приложения запускаются через pnpm dev,
+# в контейнере живёт только база.
+services:
+  db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: booking
+      POSTGRES_PASSWORD: booking
+      POSTGRES_DB: booking
+    ports:
+      - '5432:5432'
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U booking -d booking']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  db-data:

@@ -1,0 +1,18 @@
+node_modules/
+dist/
+.next/
+out/
+coverage/
+*.tsbuildinfo
+next-env.d.ts
+
+# секреты: в репозиторий попадает только .env.example
+.env
+.env.*
+!.env.example
+
+# Prisma-клиент генерируется, а не хранится
+apps/api/src/generated/
+
+.DS_Store
+*.log
