@@ -1,9 +1,10 @@
 import cors from '@fastify/cors';
 import Fastify, { type FastifyInstance } from 'fastify';
 import { healthRoutes, type HealthDeps } from './routes/health.js';
+import { authRoutes, type AuthDeps } from './routes/auth.js';
 
 export interface AppOptions {
-  db: HealthDeps['db'];
+  db: HealthDeps['db'] & AuthDeps['db'];
   webOrigin: string;
   logger?: boolean;
 }
@@ -21,6 +22,7 @@ export async function buildApp({
   await app.register(cors, { origin: webOrigin, credentials: true });
 
   healthRoutes(app, { db });
+  authRoutes(app, { db });
 
   return app;
 }
