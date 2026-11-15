@@ -1,5 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
-import { buildApp } from './app.js';
+import argon2 from 'argon2';
+import type { FastifyInstance } from 'fastify';
+import { buildApp, type AppOptions } from './app.js';
 
 function createFakeDb() {
   return {
@@ -16,16 +18,22 @@ function createFakeDb() {
   };
 }
 
+function buildTestApp(db: ReturnType<typeof createFakeDb>, options: Partial<AppOptions> = {}) {
+  return buildApp({
+    webOrigin,
+    db,
+    jwtSecret: 'test-secret-at-least-32-characters-long',
+    ...options,
+  });
+}
+
 const webOrigin = 'http://localhost:3000';
 
 describe('health', () => {
   it('GET /health отвечает 200 без обращения к базе', async () => {
     const db = createFakeDb();
 
-    const app = await buildApp({
-      webOrigin,
-      db,
-    });
+    const app = await buildTestApp(db);
 
     // inject выполняет запрос внутри процесса, без открытия порта.
     const response = await app.inject({ method: 'GET', url: '/health' });
@@ -38,7 +46,7 @@ describe('health', () => {
   it('GET /health/ready отвечает 200, когда база доступна', async () => {
     const db = createFakeDb();
 
-    const app = await buildApp({ webOrigin, db });
+    const app = await buildTestApp(db);
 
     const response = await app.inject({ method: 'GET', url: '/health/ready' });
 
@@ -48,10 +56,7 @@ describe('health', () => {
   it('GET /health/ready отвечает 503, когда база недоступна', async () => {
     const db = createFakeDb();
     db.$queryRaw.mockRejectedValue(new Error('Ошибка подключения к базе'));
-    const app = await buildApp({
-      webOrigin,
-      db,
-    });
+    const app = await buildTestApp(db);
 
     const response = await app.inject({ method: 'GET', url: '/health/ready' });
 
@@ -61,10 +66,7 @@ describe('health', () => {
 
   it('GET /health/version Отвечает 200', async () => {
     const db = createFakeDb();
-    const app = await buildApp({
-      webOrigin,
-      db,
-    });
+    const app = await buildTestApp(db);
 
     // inject выполняет запрос внутри процесса, без открытия порта.
     const response = await app.inject({ method: 'GET', url: '/health/version' });
@@ -85,7 +87,7 @@ describe('POST /auth/register', () => {
       passwordHash: 'hash',
     });
 
-    const app = await buildApp({ webOrigin, db });
+    const app = await buildTestApp(db);
 
     const response = await app.inject({
       method: 'POST',
@@ -108,7 +110,7 @@ describe('POST /auth/register', () => {
   it('Невалидный email', async () => {
     const db = createFakeDb();
 
-    const app = await buildApp({ webOrigin, db });
+    const app = await buildTestApp(db);
 
     const response = await app.inject({
       method: 'POST',
@@ -124,7 +126,7 @@ describe('POST /auth/register', () => {
   it('Короткий пароль', async () => {
     const db = createFakeDb();
 
-    const app = await buildApp({ webOrigin, db });
+    const app = await buildTestApp(db);
 
     const response = await app.inject({
       method: 'POST',
@@ -141,7 +143,7 @@ describe('POST /auth/register', () => {
     const db = createFakeDb();
     db.user.findUnique.mockResolvedValue({ id: 'existing-user' });
 
-    const app = await buildApp({ webOrigin, db });
+    const app = await buildTestApp(db);
 
     const response = await app.inject({
       method: 'POST',
@@ -155,7 +157,7 @@ describe('POST /auth/register', () => {
 
   it('приводит email к нижнему регистру и обрезает пробелы', async () => {
     const db = createFakeDb();
-    const app = await buildApp({ webOrigin, db });
+    const app = await buildTestApp(db);
 
     const response = await app.inject({
       method: 'POST',
@@ -168,5 +170,127 @@ describe('POST /auth/register', () => {
     expect(db.user.create).toHaveBeenCalledWith({
       data: expect.objectContaining({ email: 'ivan@mail.ru' }),
     });
+  });
+});
+
+describe('POST /auth/login', () => {
+  const password = 'password123';
+
+  async function createDbWithUser() {
+    const db = createFakeDb();
+    db.user.findUnique.mockResolvedValue({
+      id: 'user-1',
+      email: 'ivan@mail.ru',
+      name: 'Иван',
+      passwordHash: await argon2.hash(password),
+    });
+    return db;
+  }
+
+  function login(app: FastifyInstance, payload: object) {
+    return app.inject({ method: 'POST', url: '/auth/login', payload });
+  }
+
+  // JWT — три части через точку, средняя — данные в base64url.
+  function decodeJwtPayload(token: string) {
+    const payload = token.split('.')[1] ?? '';
+    return JSON.parse(Buffer.from(payload, 'base64url').toString());
+  }
+
+  it('возвращает пользователя без хэша пароля', async () => {
+    const db = await createDbWithUser();
+    const app = await buildTestApp(db);
+
+    const response = await login(app, { email: 'ivan@mail.ru', password });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({ id: 'user-1', email: 'ivan@mail.ru', name: 'Иван' });
+  });
+
+  it('выставляет cookie access_token с защитными флагами', async () => {
+    const db = await createDbWithUser();
+    const app = await buildTestApp(db);
+
+    const response = await login(app, { email: 'ivan@mail.ru', password });
+
+    const cookie = response.cookies.find((c) => c.name === 'access_token');
+    expect(cookie).toMatchObject({ httpOnly: true, sameSite: 'Lax', path: '/', maxAge: 900 });
+
+    expect(cookie).not.toHaveProperty('secure');
+  });
+
+  it('кладёт в токен id пользователя и срок жизни 15 минут', async () => {
+    const db = await createDbWithUser();
+    const app = await buildTestApp(db);
+
+    const response = await login(app, { email: 'ivan@mail.ru', password });
+
+    const cookie = response.cookies.find((c) => c.name === 'access_token');
+    const payload = decodeJwtPayload(cookie?.value ?? '');
+    expect(payload.sub).toBe('user-1');
+    expect(payload.exp - payload.iat).toBe(900);
+  });
+
+  it('ставит cookie флаг Secure в production', async () => {
+    const db = await createDbWithUser();
+    const app = await buildTestApp(db, { isProduction: true });
+
+    const response = await login(app, { email: 'ivan@mail.ru', password });
+
+    const cookie = response.cookies.find((c) => c.name === 'access_token');
+    expect(cookie).toMatchObject({ secure: true });
+  });
+
+  it('отвечает 401 без cookie, если пароль неверный', async () => {
+    const db = await createDbWithUser();
+    const app = await buildTestApp(db);
+
+    const response = await login(app, { email: 'ivan@mail.ru', password: 'wrong-password' });
+
+    expect(response.statusCode).toBe(401);
+    expect(response.cookies).toEqual([]);
+  });
+
+  it('отвечает 401 без cookie, если email не зарегистрирован', async () => {
+    const db = createFakeDb();
+    const app = await buildTestApp(db);
+
+    const response = await login(app, { email: 'nobody@mail.ru', password });
+
+    expect(response.statusCode).toBe(401);
+    expect(response.cookies).toEqual([]);
+  });
+
+  it('не даёт отличить неверный пароль от незарегистрированного email', async () => {
+    const appWithUser = await buildTestApp(await createDbWithUser());
+    const appWithoutUser = await buildTestApp(createFakeDb());
+
+    const wrongPassword = await login(appWithUser, { email: 'ivan@mail.ru', password: 'wrong' });
+    const unknownEmail = await login(appWithoutUser, { email: 'ivan@mail.ru', password: 'wrong' });
+
+    expect(wrongPassword.statusCode).toBe(unknownEmail.statusCode);
+    expect(wrongPassword.json()).toEqual(unknownEmail.json());
+  });
+
+  it('отвечает 400 и не ходит в базу, если тело невалидно', async () => {
+    const db = createFakeDb();
+    const app = await buildTestApp(db);
+
+    const response = await login(app, { email: 'ivanmail.ru', password });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json().error.fieldErrors).toHaveProperty('email');
+    expect(db.user.findUnique).not.toHaveBeenCalled();
+    expect(response.cookies).toEqual([]);
+  });
+
+  it('ищет пользователя по нормализованному email', async () => {
+    const db = await createDbWithUser();
+    const app = await buildTestApp(db);
+
+    const response = await login(app, { email: '  Ivan@Mail.RU  ', password });
+
+    expect(response.statusCode).toBe(200);
+    expect(db.user.findUnique).toHaveBeenCalledWith({ where: { email: 'ivan@mail.ru' } });
   });
 });

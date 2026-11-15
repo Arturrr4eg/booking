@@ -8,6 +8,7 @@ const envSchema = z.object({
   PORT: z.coerce.number().int().positive().default(4000),
   DATABASE_URL: z.url(),
   WEB_ORIGIN: z.url(),
+  JWT_SECRET: z.string().min(32),
 });
 
 export type Config = z.infer<typeof envSchema>;
