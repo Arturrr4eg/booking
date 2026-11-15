@@ -4,7 +4,13 @@ import { createDb } from './db.js';
 
 const config = loadConfig();
 const db = createDb(config.DATABASE_URL);
-const app = await buildApp({ db, webOrigin: config.WEB_ORIGIN, logger: true });
+const app = await buildApp({
+  db,
+  webOrigin: config.WEB_ORIGIN,
+  logger: true,
+  jwtSecret: config.JWT_SECRET,
+  isProduction: config.NODE_ENV === 'production',
+});
 
 // Graceful shutdown: при деплое контейнер получает SIGTERM. Доделываем текущие
 // запросы и закрываем соединения с базой, а не обрываем их на полуслове.

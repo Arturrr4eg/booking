@@ -5,17 +5,25 @@ import argon2 from 'argon2';
 
 export interface AuthDeps {
   db: { user: Pick<PrismaClient['user'], 'findUnique' | 'create'> };
+  isProduction: boolean;
 }
 
-const reqSchema = z.object({
-  email: z.string().trim().toLowerCase().pipe(z.email()),
+const emailSchema = z.string().trim().toLowerCase().pipe(z.email());
+
+const registerSchema = z.object({
+  email: emailSchema,
   password: z.string().min(8).max(128),
   name: z.string().trim().min(1).max(48),
 });
 
-export function authRoutes(app: FastifyInstance, { db }: AuthDeps) {
+const loginSchema = z.object({
+  email: emailSchema,
+  password: z.string().min(1).max(128),
+});
+
+export function authRoutes(app: FastifyInstance, { db, isProduction }: AuthDeps) {
   app.post('/auth/register', async (request, reply) => {
-    const parsed = reqSchema.safeParse(request.body);
+    const parsed = registerSchema.safeParse(request.body);
     if (!parsed.success) {
       return reply.status(400).send({ error: z.flattenError(parsed.error) });
     }
@@ -40,5 +48,32 @@ export function authRoutes(app: FastifyInstance, { db }: AuthDeps) {
     };
 
     return reply.status(201).send(newReply);
+  });
+
+  app.post('/auth/login', async (request, reply) => {
+    const parsed = loginSchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.status(400).send({ error: z.flattenError(parsed.error) });
+    }
+
+    const user = await db.user.findUnique({ where: { email: parsed.data.email } });
+    if (!user) {
+      return reply.status(401).send({ error: 'Invalid email or password' });
+    }
+
+    const isPasswordValid = await argon2.verify(user.passwordHash, parsed.data.password);
+    if (!isPasswordValid) {
+      return reply.status(401).send({ error: 'Invalid email or password' });
+    }
+
+    const token = await reply.jwtSign({ sub: user.id });
+    reply.setCookie('access_token', token, {
+      path: '/',
+      httpOnly: true,
+      secure: isProduction,
+      sameSite: 'lax',
+      maxAge: 900,
+    });
+    return reply.status(200).send({ id: user.id, email: user.email, name: user.name });
   });
 }
