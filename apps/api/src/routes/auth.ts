@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import type { PrismaClient } from '../generated/prisma/client.js';
 import z from 'zod';
 import argon2 from 'argon2';
+import { authenticate } from '../auth/authenticate.js';
 
 export interface AuthDeps {
   db: { user: Pick<PrismaClient['user'], 'findUnique' | 'create'> };
@@ -20,6 +21,10 @@ const loginSchema = z.object({
   email: emailSchema,
   password: z.string().min(1).max(128),
 });
+
+function toPublicUser(user: { id: string; email: string; name: string }) {
+  return { id: user.id, email: user.email, name: user.name };
+}
 
 export function authRoutes(app: FastifyInstance, { db, isProduction }: AuthDeps) {
   app.post('/auth/register', async (request, reply) => {
@@ -41,13 +46,7 @@ export function authRoutes(app: FastifyInstance, { db, isProduction }: AuthDeps)
       },
     });
 
-    const newReply = {
-      id: newUser.id,
-      email: newUser.email,
-      name: newUser.name,
-    };
-
-    return reply.status(201).send(newReply);
+    return reply.status(201).send(toPublicUser(newUser));
   });
 
   app.post('/auth/login', async (request, reply) => {
@@ -74,6 +73,15 @@ export function authRoutes(app: FastifyInstance, { db, isProduction }: AuthDeps)
       sameSite: 'lax',
       maxAge: 900,
     });
-    return reply.status(200).send({ id: user.id, email: user.email, name: user.name });
+    return reply.status(200).send(toPublicUser(user));
+  });
+
+  app.get('/auth/me', { preHandler: authenticate }, async (request, reply) => {
+    const id = request.user.sub;
+    const user = await db.user.findUnique({ where: { id } });
+    if (!user) {
+      return reply.status(401).send({ error: 'Unauthorized' });
+    }
+    return reply.status(200).send(toPublicUser(user));
   });
 }

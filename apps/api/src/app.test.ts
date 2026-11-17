@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi, afterEach } from 'vitest';
 import argon2 from 'argon2';
 import type { FastifyInstance } from 'fastify';
 import { buildApp, type AppOptions } from './app.js';
@@ -16,6 +16,17 @@ function createFakeDb() {
       }),
     },
   };
+}
+
+function createDbWithUser() {
+  const db = createFakeDb();
+  db.user.findUnique.mockResolvedValue({
+    id: 'user-1',
+    email: 'ivan@mail.ru',
+    name: 'Иван',
+    passwordHash: 'hash',
+  });
+  return db;
 }
 
 function buildTestApp(db: ReturnType<typeof createFakeDb>, options: Partial<AppOptions> = {}) {
@@ -292,5 +303,97 @@ describe('POST /auth/login', () => {
 
     expect(response.statusCode).toBe(200);
     expect(db.user.findUnique).toHaveBeenCalledWith({ where: { email: 'ivan@mail.ru' } });
+  });
+});
+describe('GET /auth/me', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+  it('401 если отсутствует куки', async () => {
+    const db = createDbWithUser();
+    const app = await buildTestApp(db);
+    const response = await app.inject({
+      method: 'GET',
+      url: '/auth/me',
+    });
+
+    expect(response.statusCode).toBe(401);
+    expect(response.json()).toEqual({ error: 'Unauthorized' });
+    expect(db.user.findUnique).not.toHaveBeenCalled();
+  });
+
+  it('401 если невалидный токен', async () => {
+    const db = createDbWithUser();
+    const app = await buildTestApp(db);
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/auth/me',
+      cookies: { access_token: 'abc' },
+    });
+    expect(response.statusCode).toBe(401);
+    expect(response.json()).toEqual({ error: 'Unauthorized' });
+    expect(db.user.findUnique).not.toHaveBeenCalled();
+  });
+  it('401 если токен другого приложения', async () => {
+    const db = createDbWithUser();
+    const app = await buildTestApp(db);
+    const otherApp = await buildTestApp(createFakeDb(), {
+      jwtSecret: 'another-secret-at-least-32-characters',
+    });
+    const forged = otherApp.jwt.sign({ sub: 'user-1' });
+    const response = await app.inject({
+      method: 'GET',
+      url: '/auth/me',
+      cookies: { access_token: forged },
+    });
+    expect(response.statusCode).toBe(401);
+    expect(response.json()).toEqual({ error: 'Unauthorized' });
+    expect(db.user.findUnique).not.toHaveBeenCalled();
+  });
+
+  it('401 если истекший токен', async () => {
+    const db = createDbWithUser();
+    const app = await buildTestApp(db);
+    const token = app.jwt.sign({ sub: 'user-1' });
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(Date.now() + 16 * 60 * 1000);
+    const response = await app.inject({
+      method: 'GET',
+      url: '/auth/me',
+      cookies: { access_token: token },
+    });
+
+    expect(response.statusCode).toBe(401);
+    expect(response.json()).toEqual({ error: 'Unauthorized' });
+    expect(db.user.findUnique).not.toHaveBeenCalled();
+  });
+
+  it('200 если валидный токен', async () => {
+    const db = createDbWithUser();
+    const app = await buildTestApp(db);
+    const token = app.jwt.sign({ sub: 'user-1' });
+    const response = await app.inject({
+      method: 'GET',
+      url: '/auth/me',
+      cookies: { access_token: token },
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({ id: 'user-1', email: 'ivan@mail.ru', name: 'Иван' });
+    expect(db.user.findUnique).toHaveBeenCalledWith({ where: { id: 'user-1' } });
+  });
+
+  it('401 если пользователь был удален', async () => {
+    const db = createFakeDb();
+    const app = await buildTestApp(db);
+    const token = app.jwt.sign({ sub: 'user-1' });
+    const response = await app.inject({
+      method: 'GET',
+      url: '/auth/me',
+      cookies: { access_token: token },
+    });
+    expect(response.statusCode).toBe(401);
+    expect(response.json()).toEqual({ error: 'Unauthorized' });
+    expect(db.user.findUnique).toHaveBeenCalledWith({ where: { id: 'user-1' } });
   });
 });

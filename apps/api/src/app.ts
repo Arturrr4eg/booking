@@ -29,6 +29,7 @@ export async function buildApp({
   await app.register(jwt, {
     secret: jwtSecret,
     sign: { expiresIn: '15m' },
+    cookie: { cookieName: 'access_token', signed: false },
   });
   await app.register(fastifyCookie);
 
