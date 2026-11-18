@@ -16,7 +16,8 @@
   },
   "packageManager": "pnpm@12.9.1",
   "engines": {
-    "node": ">=22"
+    "node": ">=22",
+    "npm": "please-use-pnpm"
   },
   "devDependencies": {
     "prettier": "^3.10.1"
