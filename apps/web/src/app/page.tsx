@@ -1,5 +1,6 @@
 import { Suspense } from 'react';
 import { ApiStatus } from './api-status';
+import Link from 'next/link';
 
 export default function Home() {
   return (
@@ -15,6 +16,7 @@ export default function Home() {
       <Suspense fallback={<p className="text-sm text-zinc-500">Проверяем API…</p>}>
         <ApiStatus />
       </Suspense>
+      <Link href="/register">Зарегистрироваться</Link>
     </main>
   );
 }
