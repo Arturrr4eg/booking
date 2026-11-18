@@ -397,3 +397,37 @@ describe('GET /auth/me', () => {
     expect(db.user.findUnique).toHaveBeenCalledWith({ where: { id: 'user-1' } });
   });
 });
+
+describe('обработка ошибок', () => {
+  it('500 не раскрывает подробности внутренней ошибки', async () => {
+    const db = createFakeDb();
+    db.user.findUnique.mockRejectedValue(
+      new Error('Invalid `db.user.findUnique()` invocation in C:/secret/auth.ts:36:32'),
+    );
+    const app = await buildTestApp(db);
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/auth/register',
+      payload: { email: 'ivan@mail.ru', password: 'password-123', name: 'Иван' },
+    });
+
+    expect(response.statusCode).toBe(500);
+    expect(response.json()).toEqual({ error: 'Internal Server Error' });
+    expect(response.body).not.toContain('findUnique');
+  });
+
+  it('ошибка клиента (кривой JSON) по-прежнему отвечает 400 с пояснением', async () => {
+    const app = await buildTestApp(createFakeDb());
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/auth/register',
+      headers: { 'content-type': 'application/json' },
+      payload: '{ не json',
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toHaveProperty('message');
+  });
+});
