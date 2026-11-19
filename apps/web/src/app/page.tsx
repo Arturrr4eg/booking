@@ -17,6 +17,7 @@ export default function Home() {
         <ApiStatus />
       </Suspense>
       <Link href="/register">Зарегистрироваться</Link>
+      <Link href="/login">Войти</Link>
     </main>
   );
 }
