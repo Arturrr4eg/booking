@@ -19,11 +19,15 @@ export function useRegisterForm() {
     }
 
     if (result.kind === 'validation') {
+      let hasFieldError = false;
       for (const field of fields) {
         const message = result.fieldErrors[field]?.[0];
-        if (message) form.setError(field, { message });
+        if (message) {
+          form.setError(field, { message });
+          hasFieldError = true;
+        }
       }
-      return;
+      if (hasFieldError) return;
     }
 
     form.setError('root.server', {

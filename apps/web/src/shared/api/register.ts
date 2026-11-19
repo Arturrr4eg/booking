@@ -24,11 +24,13 @@ const publicUserSchema = z.object({
 
 const validationErrorSchema = z.object({
   error: z.object({
-    fieldErrors: z.object({
-      email: z.array(z.string()).optional(),
-      name: z.array(z.string()).optional(),
-      password: z.array(z.string()).optional(),
-    }),
+    fieldErrors: z
+      .object({
+        email: z.array(z.string()).optional(),
+        name: z.array(z.string()).optional(),
+        password: z.array(z.string()).optional(),
+      })
+      .refine((errors) => Object.keys(errors).length > 0),
   }),
 });
 
