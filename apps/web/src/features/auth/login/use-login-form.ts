@@ -2,18 +2,23 @@ import { useRouter } from 'next/navigation';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { postLogin } from '@/shared/api';
+import { useAuth } from '../model/auth-context';
 import { loginFormSchema, type LoginFormValues } from './schema';
 
 const fields = ['email', 'password'] as const;
 
 export function useLoginForm() {
   const router = useRouter();
+  const { signIn } = useAuth();
   const form = useForm<LoginFormValues>({ resolver: zodResolver(loginFormSchema) });
 
   const onSubmit = form.handleSubmit(async (values) => {
     const result = await postLogin(values);
 
     if (result.ok) {
+      // Провайдер живёт в layout и при переходе на / не перемонтируется,
+      // поэтому сам он про вход не узнает — сообщаем ему.
+      signIn(result.user);
       router.push('/');
       return;
     }

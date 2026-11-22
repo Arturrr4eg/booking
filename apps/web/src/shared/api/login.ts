@@ -1,8 +1,7 @@
 import { z } from 'zod';
+import { publicUserSchema, type PublicUser } from './user';
 
 export type LoginRequest = { email: string; password: string };
-
-export type PublicUser = { id: string; email: string; name: string };
 
 export type LoginResult =
   | { ok: true; user: PublicUser }
@@ -13,12 +12,6 @@ export type LoginResult =
     }
   | { ok: false; kind: 'invalid-credentials' }
   | { ok: false; kind: 'unknown' };
-
-const publicUserSchema = z.object({
-  id: z.string(),
-  email: z.string(),
-  name: z.string(),
-});
 
 const validationErrorSchema = z.object({
   error: z.object({
