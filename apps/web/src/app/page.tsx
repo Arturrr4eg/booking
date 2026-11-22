@@ -1,11 +1,12 @@
 import { Suspense } from 'react';
 import { ApiStatus } from './api-status';
-import Link from 'next/link';
+import { HomeAuth } from './home-auth';
 
 export default function Home() {
   return (
     <main className="flex flex-1 flex-col items-center justify-center gap-6 p-8 text-center">
       <h1 className="text-4xl font-semibold tracking-tight">Booking</h1>
+
       <p className="max-w-md text-lg text-zinc-600 dark:text-zinc-400">
         Сервис онлайн-записи для мастеров и студий. Пока здесь только каркас.
       </p>
@@ -16,8 +17,10 @@ export default function Home() {
       <Suspense fallback={<p className="text-sm text-zinc-500">Проверяем API…</p>}>
         <ApiStatus />
       </Suspense>
-      <Link href="/register">Зарегистрироваться</Link>
-      <Link href="/login">Войти</Link>
+
+      {/* Клиентский компонент: на сервере рендерится в состоянии loading и попадает
+          в статическую оболочку, а в браузере после гидрации спрашивает /api/auth/me. */}
+      <HomeAuth />
     </main>
   );
 }

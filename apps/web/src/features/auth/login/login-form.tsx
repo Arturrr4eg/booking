@@ -10,11 +10,19 @@ export function LoginForm() {
   const { form, onSubmit } = useLoginForm();
   const {
     register,
-    formState: { errors, isSubmitting },
+    formState: { errors, isSubmitting, isSubmitSuccessful },
   } = form;
+  // После успешного входа запрос уже завершён, но переход на / ещё идёт.
+  // Держим кнопку заблокированной до конца, чтобы не отправить вход второй раз.
+  const isBusy = isSubmitting || isSubmitSuccessful;
 
   return (
-    <form onSubmit={onSubmit} noValidate className="flex w-full max-w-sm flex-col gap-4">
+    <form
+      method="POST"
+      onSubmit={onSubmit}
+      noValidate
+      className="flex w-full max-w-sm flex-col gap-4"
+    >
       <h1 className="text-2xl font-semibold">Вход</h1>
 
       {errors.root?.server && (
@@ -51,10 +59,10 @@ export function LoginForm() {
 
       <button
         type="submit"
-        disabled={isSubmitting}
+        disabled={isBusy}
         className="rounded-md bg-zinc-900 px-4 py-2 text-white disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900"
       >
-        {isSubmitting ? 'Входим' : 'Войти'}
+        {isBusy ? 'Входим…' : 'Войти'}
       </button>
 
       <p className="text-sm text-zinc-600 dark:text-zinc-400">

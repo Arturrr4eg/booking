@@ -10,11 +10,19 @@ export function RegisterForm() {
   const { form, onSubmit } = useRegisterForm();
   const {
     register,
-    formState: { errors, isSubmitting },
+    formState: { errors, isSubmitting, isSubmitSuccessful },
   } = form;
+  // После успешной регистрации запрос уже завершён, но переход на /login ещё идёт.
+  // Держим кнопку заблокированной до конца, чтобы не отправить регистрацию второй раз.
+  const isBusy = isSubmitting || isSubmitSuccessful;
 
   return (
-    <form onSubmit={onSubmit} noValidate className="flex w-full max-w-sm flex-col gap-4">
+    <form
+      method="POST"
+      onSubmit={onSubmit}
+      noValidate
+      className="flex w-full max-w-sm flex-col gap-4"
+    >
       <h1 className="text-2xl font-semibold">Регистрация</h1>
 
       {errors.root?.server && (
@@ -63,10 +71,10 @@ export function RegisterForm() {
 
       <button
         type="submit"
-        disabled={isSubmitting}
+        disabled={isBusy}
         className="rounded-md bg-zinc-900 px-4 py-2 text-white disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900"
       >
-        {isSubmitting ? 'Регистрируем…' : 'Зарегистрироваться'}
+        {isBusy ? 'Регистрируем…' : 'Зарегистрироваться'}
       </button>
 
       <p className="text-sm text-zinc-600 dark:text-zinc-400">

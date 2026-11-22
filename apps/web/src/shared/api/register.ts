@@ -1,8 +1,7 @@
 import { z } from 'zod';
+import { publicUserSchema, type PublicUser } from './user';
 
 export type RegisterRequest = { email: string; name: string; password: string };
-
-export type PublicUser = { id: string; email: string; name: string };
 
 export type RegisterResult =
   | { ok: true; user: PublicUser }
@@ -16,12 +15,6 @@ export type RegisterResult =
 
 // Ожидаемые формы тел ответа. Сервер — внешний мир, его ответ проверяем так же,
 // как сервер проверяет тело запроса.
-const publicUserSchema = z.object({
-  id: z.string(),
-  email: z.string(),
-  name: z.string(),
-});
-
 const validationErrorSchema = z.object({
   error: z.object({
     fieldErrors: z
