@@ -1,7 +1,7 @@
 'use client';
 
 import { createContext, useContext } from 'react';
-import type { PublicUser } from '@/shared/api';
+import type { LogoutResult, PublicUser } from '@/shared/api';
 
 // Ровно одно из четырёх состояний. Невозможные сочетания
 // («грузится, но пользователь уже есть») не выразить в типе.
@@ -17,6 +17,9 @@ export type AuthContextValue = {
   signIn: (user: PublicUser) => void;
   // Перепроверить вход: например, по кнопке «Повторить» после ошибки.
   refresh: () => void;
+  // Выйти: удаляет cookie на сервере и только при успехе переводит в guest.
+  // Результат нужен кнопке, чтобы показать ошибку, — пользователь при ней остаётся вошедшим.
+  signOut: () => Promise<LogoutResult>;
 };
 
 export const AuthContext = createContext<AuthContextValue | null>(null);

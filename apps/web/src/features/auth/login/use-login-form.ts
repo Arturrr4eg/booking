@@ -1,3 +1,4 @@
+import { useLayoutEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -11,6 +12,13 @@ export function useLoginForm() {
   const router = useRouter();
   const { signIn } = useAuth();
   const form = useForm<LoginFormValues>({ resolver: zodResolver(loginFormSchema) });
+  const { reset } = form;
+
+  // С cacheComponents Next не размонтирует страницу при переходе, а прячет её в <Activity>
+  // вместе с состоянием. Без сброса после выхода на /login останутся email, пароль в DOM
+  // и isSubmitSuccessful (кнопка заблокирована). Cleanup срабатывает при скрытии;
+  // layout-эффект — синхронно, чтобы при возврате не мелькнула старая форма.
+  useLayoutEffect(() => reset, [reset]);
 
   const onSubmit = form.handleSubmit(async (values) => {
     const result = await postLogin(values);

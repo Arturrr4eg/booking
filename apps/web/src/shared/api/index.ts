@@ -6,3 +6,5 @@ export { postLogin } from './login';
 export type { LoginRequest, LoginResult } from './login';
 export { getMe } from './me';
 export type { GetMeResult } from './me';
+export { postLogout } from './logout';
+export type { LogoutResult } from './logout';

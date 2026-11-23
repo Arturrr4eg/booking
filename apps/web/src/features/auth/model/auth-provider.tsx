@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
-import { getMe, type GetMeResult, type PublicUser } from '@/shared/api';
+import { getMe, postLogout, type GetMeResult, type PublicUser } from '@/shared/api';
 import { AuthContext, type AuthState } from './auth-context';
 
 function toAuthState(result: GetMeResult): AuthState {
@@ -47,5 +47,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     loadMe();
   }
 
-  return <AuthContext value={{ state, signIn, refresh }}>{children}</AuthContext>;
+  async function signOut() {
+    const result = await postLogout();
+    // Не вышли — cookie на месте, значит пользователь всё ещё вошёл: состояние не трогаем.
+    if (result.ok) {
+      // Ответ /me, ушедший до выхода, мог бы вернуть authenticated.
+      ignorePendingMe();
+      setState({ status: 'guest' });
+    }
+    return result;
+  }
+
+  return <AuthContext value={{ state, signIn, refresh, signOut }}>{children}</AuthContext>;
 }

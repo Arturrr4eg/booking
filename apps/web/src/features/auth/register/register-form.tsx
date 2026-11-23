@@ -1,5 +1,6 @@
 'use client';
 
+import { useId } from 'react';
 import Link from 'next/link';
 import { useRegisterForm } from './use-register-form';
 
@@ -8,6 +9,9 @@ const inputClass =
 
 export function RegisterForm() {
   const { form, onSubmit } = useRegisterForm();
+  // Next прячет прошлые страницы в <Activity>, но они остаются в DOM. С постоянными id
+  // у входа и регистрации были бы одинаковые id="email", и label указал бы на скрытое поле.
+  const id = useId();
   const {
     register,
     formState: { errors, isSubmitting, isSubmitSuccessful },
@@ -32,9 +36,9 @@ export function RegisterForm() {
       )}
 
       <div className="flex flex-col gap-1">
-        <label htmlFor="name">Имя</label>
+        <label htmlFor={`${id}-name`}>Имя</label>
         <input
-          id="name"
+          id={`${id}-name`}
           autoComplete="name"
           aria-invalid={errors.name ? true : undefined}
           className={inputClass}
@@ -44,9 +48,9 @@ export function RegisterForm() {
       </div>
 
       <div className="flex flex-col gap-1">
-        <label htmlFor="email">Email</label>
+        <label htmlFor={`${id}-email`}>Email</label>
         <input
-          id="email"
+          id={`${id}-email`}
           type="email"
           autoComplete="email"
           aria-invalid={errors.email ? true : undefined}
@@ -57,9 +61,9 @@ export function RegisterForm() {
       </div>
 
       <div className="flex flex-col gap-1">
-        <label htmlFor="password">Пароль</label>
+        <label htmlFor={`${id}-password`}>Пароль</label>
         <input
-          id="password"
+          id={`${id}-password`}
           type="password"
           autoComplete="new-password"
           aria-invalid={errors.password ? true : undefined}

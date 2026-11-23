@@ -398,6 +398,67 @@ describe('GET /auth/me', () => {
   });
 });
 
+describe('POST /auth/logout', () => {
+  function logout(app: FastifyInstance, cookies?: Record<string, string>) {
+    return app.inject({ method: 'POST', url: '/auth/logout', cookies });
+  }
+
+  it('204 с пустым телом, даже без cookie', async () => {
+    const app = await buildTestApp(createFakeDb());
+
+    const response = await logout(app);
+
+    expect(response.statusCode).toBe(204);
+    expect(response.body).toBe('');
+  });
+
+  it('204 с валидным токеном и не ходит в БД', async () => {
+    const db = createDbWithUser();
+    const app = await buildTestApp(db);
+    const token = app.jwt.sign({ sub: 'user-1' });
+
+    const response = await logout(app, { access_token: token });
+
+    expect(response.statusCode).toBe(204);
+    expect(db.user.findUnique).not.toHaveBeenCalled();
+  });
+
+  it('204 с битым токеном — протухшую cookie тоже надо удалить', async () => {
+    const app = await buildTestApp(createFakeDb());
+
+    const response = await logout(app, { access_token: 'abc' });
+
+    expect(response.statusCode).toBe(204);
+    expect(response.cookies.find((c) => c.name === 'access_token')).toMatchObject({ value: '' });
+  });
+
+  it('удаляет cookie access_token с теми же атрибутами, что при входе', async () => {
+    const app = await buildTestApp(createFakeDb());
+
+    const response = await logout(app);
+
+    const cookie = response.cookies.find((c) => c.name === 'access_token');
+    expect(cookie).toMatchObject({
+      value: '',
+      path: '/',
+      httpOnly: true,
+      sameSite: 'Lax',
+      maxAge: 0,
+      expires: new Date(0),
+    });
+    expect(cookie).not.toHaveProperty('secure');
+  });
+
+  it('ставит флаг Secure в production', async () => {
+    const app = await buildTestApp(createFakeDb(), { isProduction: true });
+
+    const response = await logout(app);
+
+    const cookie = response.cookies.find((c) => c.name === 'access_token');
+    expect(cookie).toMatchObject({ secure: true });
+  });
+});
+
 describe('обработка ошибок', () => {
   it('500 не раскрывает подробности внутренней ошибки', async () => {
     const db = createFakeDb();

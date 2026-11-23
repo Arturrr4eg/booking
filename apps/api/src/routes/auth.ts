@@ -9,6 +9,17 @@ export interface AuthDeps {
   isProduction: boolean;
 }
 
+// Атрибуты, по которым браузер узнаёт cookie. Вход и выход обязаны передавать одинаковые,
+// иначе clearCookie выставит другую cookie, а access_token останется.
+function accessTokenCookie(isProduction: boolean) {
+  return {
+    path: '/',
+    httpOnly: true,
+    secure: isProduction,
+    sameSite: 'lax' as const,
+  };
+}
+
 const emailSchema = z.string().trim().toLowerCase().pipe(z.email());
 
 const registerSchema = z.object({
@@ -66,13 +77,7 @@ export function authRoutes(app: FastifyInstance, { db, isProduction }: AuthDeps)
     }
 
     const token = await reply.jwtSign({ sub: user.id });
-    reply.setCookie('access_token', token, {
-      path: '/',
-      httpOnly: true,
-      secure: isProduction,
-      sameSite: 'lax',
-      maxAge: 900,
-    });
+    reply.setCookie('access_token', token, { ...accessTokenCookie(isProduction), maxAge: 900 });
     return reply.status(200).send(toPublicUser(user));
   });
 
@@ -83,5 +88,12 @@ export function authRoutes(app: FastifyInstance, { db, isProduction }: AuthDeps)
       return reply.status(401).send({ error: 'Unauthorized' });
     }
     return reply.status(200).send(toPublicUser(user));
+  });
+
+  // Без authenticate: выход идемпотентен, протухшая cookie тоже должна удаляться.
+  // JWT при этом остаётся валидным до exp — сервер сессий не хранит.
+  app.post('/auth/logout', async (_request, reply) => {
+    reply.clearCookie('access_token', accessTokenCookie(isProduction));
+    return reply.status(204).send();
   });
 }
