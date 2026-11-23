@@ -23,18 +23,47 @@ model User {
   sessions   Session[]
 }
 
-/// Refresh-сессия. В базе лежит только хэш токена: утечка БД не даёт войти.
-model Session {
-  id        String   @id @default(uuid())
-  userId    String
-  tokenHash String   @unique
-  userAgent String?
-  expiresAt DateTime
-  createdAt DateTime @default(now())
+enum SessionRevokeReason {
+  /// Пользователь нажал «Выйти».
+  LOGOUT
+  /// Пришёл уже использованный refresh-токен — вероятная кража.
+  REUSE
+}
 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+/// Сессия = один вход с одного устройства. Живёт не дольше expiresAt,
+/// сколько бы раз ни продлевалась.
+model Session {
+  id            String               @id @default(uuid())
+  userId        String
+  userAgent     String?
+  /// Абсолютный потолок (вход + 90 дней). При ротации не меняется.
+  expiresAt     DateTime
+  /// Сессию закрыли: выход или кража. Все её refresh-токены сразу недействительны.
+  revokedAt     DateTime?
+  revokedReason SessionRevokeReason?
+  createdAt     DateTime             @default(now())
+
+  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  refreshTokens RefreshToken[]
 
   @@index([userId])
+}
+
+/// Одно звено ротации внутри сессии. В базе только SHA-256 хэш токена:
+/// утечка БД не даёт готовых токенов.
+model RefreshToken {
+  id        String    @id @default(uuid())
+  sessionId String
+  tokenHash String    @unique
+  /// Скользящий срок: min(выдача + 30 дней, session.expiresAt).
+  expiresAt DateTime
+  /// Токен обменяли на новую пару. Повторный приход = кража.
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  session Session @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId])
 }
 
 /// Бизнес = одна публичная страница записи: /b/{slug}.

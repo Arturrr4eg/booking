@@ -18,7 +18,7 @@
 
 - Монорепо pnpm workspaces: `apps/api`, `apps/web`. **Только pnpm**, npm запрещён (`.npmrc` + `engines`).
 - `apps/api`: Fastify 5, Prisma 7 (`@prisma/adapter-pg`, клиент в `src/generated/prisma`), PostgreSQL 17
-  в docker-compose, zod 4, argon2, JWT в HttpOnly-cookie `access_token` (15 мин), Vitest.
+  в docker-compose, zod 4, argon2, JWT в HttpOnly-cookie `access_token` (15 мин) + refresh `refresh_token`, Vitest.
 - `apps/web`: Next.js 16 (App Router, `cacheComponents`), React 19, Tailwind 4, react-hook-form + zod,
   Vitest (окружение `node`, конфиг `vitest.config.mts`, тесты `src/**/*.test.ts`).
   Структура по FSD: `app/` (страницы), `features/` (фичи), `shared/` (api, config, ui).
@@ -43,40 +43,52 @@
 - Ответы API на фронте тоже проверяются zod-схемами (`shared/api`), запросы возвращают
   discriminated union (`{ ok: true, … } | { ok: false, kind: … }`), а не бросают исключения.
 - В git только `.env.example`, никогда `.env`.
+- `cacheComponents`: Next не размонтирует прошлые страницы, а прячет в `<Activity>` (до 3 маршрутов)
+  вместе с состоянием и DOM. Формы с паролями сбрасывать в cleanup `useLayoutEffect`
+  (`useLayoutEffect(() => reset, [reset])`), `id` полей — через `useId`, иначе дубли в DOM.
+  Гайд: `node_modules/next/dist/docs/01-app/02-guides/preserving-ui-state.md`.
 
 ## Где мы сейчас
 
 Актуальный план и долги — в GitHub Issues и открытых PR (`gh issue list`, `gh pr list`).
 
-**Последняя задача — состояние авторизации на клиенте (ветка `feat/web-auth-state`).**
-PR #15 (тесты клиентов API) смёржен, #12 закрыт.
+**Текущая задача — refresh-токены, вторая половина #18.** PR 1 (API, ветка `feat/refresh-token`)
+открыт. Код PR 1 по просьбе пользователя написал Claude, с подробным разбором простыми словами.
 
-- Сделано: `PublicUser` и `publicUserSchema` в одном месте, `shared/api/user.ts` (#13).
-  `getMe` в `shared/api/me.ts`, 9 тестов, каждая из 9 мутаций роняет свой тест.
-  `AuthProvider` в `features/auth/model`: состояние — union `loading | authenticated | guest | error`,
-  действия `signIn` и `refresh`, номер запроса в `useRef` против гонки ответов.
-  Форма входа вызывает `signIn`, на главной `HomeAuth` показывает все 4 состояния.
-  Проверено в браузере: вход без перезагрузки, перезагрузка, API лежит → «Повторить».
-- Формы входа и регистрации: `method="POST"` (до гидрации пароль уходил GET-ом в URL) и кнопка
-  заблокирована `isSubmitting || isSubmitSuccessful` — раньше после успеха она снова включалась,
-  пока шёл `router.push`. Проверено в браузере с замедленным fetch.
-- Состояние: открыт PR из `feat/web-auth-state` с `Closes #13` (`gh pr list`). Дальше — CI зелёный,
-  squash merge, `git switch main && git pull`.
+Проблема: access-токен живёт 15 минут, после этого пользователь — гость и вводит пароль заново.
+Решение: короткий access (JWT, 15 мин) + длинный refresh, которым фронт тихо получает новую пару.
 
-**Следующий этап — выход из аккаунта (#18).** Ветка `feat/logout` от свежего `main`.
-Код пишет пользователь, Claude ведёт по шагам и ревьюит.
+Что сделано в PR 1 (API):
 
-1. API, `apps/api/src/routes/auth.ts`: `POST /auth/logout` → `reply.clearCookie('access_token', …)`
-   с теми же `path`, `httpOnly`, `sameSite`, `secure`, что в `/auth/login`, ответ `204`.
-   Обсудить: нужен ли `authenticate` (выход без cookie — ошибка или просто 204?).
-   Тесты через `app.inject`: в ответе `set-cookie` с истёкшей cookie; без cookie тоже 204.
-2. Фронт, `shared/api/logout.ts`: `postLogout()` → `{ ok: true } | { ok: false, kind: 'unknown' }`,
-   экспорт из `shared/api/index.ts`, тесты по таблице ответов + мутации (как `me.test.ts`).
-3. `features/auth/model`: `signOut()` в `AuthContextValue` и `AuthProvider` — вызвать `postLogout`,
-   при успехе сдвинуть `requestIdRef` и поставить `guest`. Обсудить, что показывать, если выход не удался.
-4. `app/home-auth.tsx`: кнопка «Выйти» в состоянии `authenticated`.
-5. Проверить в браузере: вход → выход → F5 остаётся гостем (cookie правда удалена).
-6. Вторая половина #18 — истечение токена (15 мин): при 401 от защищённых запросов переводить
-   состояние в `guest`. Можно отдельным PR.
+- Схема: `Session` = один вход (`expiresAt` — абсолютный потолок 90 дней, `revokedAt`,
+  `revokedReason` `LOGOUT`/`REUSE`) и `RefreshToken` = звено ротации (`tokenHash @unique`,
+  `expiresAt` — 30 дней, но не дольше сессии, `usedAt`). Миграция `session_rotation`.
+- `auth/refresh-token.ts`: токен — 32 случайных байта base64url (не JWT), в БД SHA-256
+  (не argon2: энтропия высокая, а детерминированный хэш нужен для поиска по `@unique`).
+  Cookie `refresh_token` с `path: '/api/auth'` — путь, который видит браузер (rewrites Next).
+- Вход: сессия и первый токен одной вложенной записью, cookie — после базы.
+- `POST /auth/refresh` → `204` с новой парой. Любой отказ — `401` и стёртые обе cookie.
+  Использованный токен старше `REUSE_GRACE_MS` (10 с) — кража: сессия `REUSE`, лог `warn`.
+  В окне 10 с — новая пара (две вкладки с общей cookie). Порядок: новый токен → пометка старого
+  (`updateMany` с `usedAt: null`, чтобы окно не сдвигалось).
+- `POST /auth/logout`: один `session.updateMany` по `refreshTokens.some.tokenHash`, причина
+  `LOGOUT`, потом стереть обе cookie; без cookie/сессии — всё равно `204`; база упала — `500`,
+  cookie не тронуты.
+- 58 тестов API, мутации убиты (12 + 22 + 8). Сценарий вход → refresh → logout → кража проверен
+  curl'ом через `:3000` на настоящей базе.
+
+**Следующий этап — PR 2, фронт** (после мержа PR 1, ветка от свежего `main`):
+
+1. Обёртка над `fetch` в `shared/api`: 401 → один общий refresh → повтор исходного запроса.
+   Single-flight: параллельные 401 в вкладке ждут один промис (между вкладками страхует окно 10 с).
+   Сам `/auth/refresh` вернул 401 — не повторять, сообщить «сессия кончилась».
+   `/auth/refresh` шлётся без тела и без `Content-Type`, иначе Fastify 400.
+2. `AuthProvider`: сессия кончилась → `guest`. `getMe` идёт через обёртку.
+3. Тесты обёртки по таблице ответов + single-flight (два параллельных 401 → один refresh), мутации.
+4. Проверить в браузере: вход → удалить `access_token` в DevTools → F5 остаёмся вошедшими;
+   удалить обе cookie → гость. После PR закрыть #18.
+
+Долги: чистка протухших строк `RefreshToken`/`Session` (cron) — завести issue `tech-debt`.
+Опционально: перепроверка `/me` по `visibilitychange`, экран «мои устройства» (`userAgent`).
 
 Потом на выбор: проверка входа на сервере (#17), мемоизация контекста с замером (#16).
