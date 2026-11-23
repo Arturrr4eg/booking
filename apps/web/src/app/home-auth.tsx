@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { useAuth } from '@/features/auth/model/auth-context';
+import { LogoutButton } from '@/features/auth/logout/logout-button';
 
 export function HomeAuth() {
   const { state, refresh } = useAuth();
@@ -23,7 +24,12 @@ export function HomeAuth() {
       );
 
     case 'authenticated':
-      return <p>Вы вошли как {state.user.name}</p>;
+      return (
+        <div className="flex flex-col items-center gap-2">
+          <p>Вы вошли как {state.user.name}</p>
+          <LogoutButton />
+        </div>
+      );
 
     case 'guest':
       return (
