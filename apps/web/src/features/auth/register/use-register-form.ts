@@ -1,3 +1,4 @@
+import { useLayoutEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -9,6 +10,10 @@ const fields = ['email', 'name', 'password'] as const;
 export function useRegisterForm() {
   const router = useRouter();
   const form = useForm<RegisterFormValues>({ resolver: zodResolver(registerFormSchema) });
+  const { reset } = form;
+
+  // Сброс при скрытии страницы в <Activity> — см. use-login-form.ts.
+  useLayoutEffect(() => reset, [reset]);
 
   const onSubmit = form.handleSubmit(async (values) => {
     const result = await postRegister(values);
