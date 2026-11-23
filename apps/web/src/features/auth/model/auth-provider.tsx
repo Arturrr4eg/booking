@@ -6,7 +6,8 @@ import { AuthContext, type AuthState } from './auth-context';
 
 function toAuthState(result: GetMeResult): AuthState {
   if (result.ok) return { status: 'authenticated', user: result.user };
-  // 401 — точно не вошёл. Всё остальное (сеть, 500) — не знаем, поэтому error, а не guest.
+  // 401 — точно не вошёл: getMe уже попробовал продлить сессию refresh-токеном, и не вышло.
+  // Всё остальное (сеть, 500, сбой продления) — не знаем, поэтому error, а не guest.
   return result.kind === 'unauthorized' ? { status: 'guest' } : { status: 'error' };
 }
 

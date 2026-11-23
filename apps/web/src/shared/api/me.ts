@@ -1,3 +1,4 @@
+import { authFetch } from './auth-fetch';
 import { publicUserSchema, type PublicUser } from './user';
 
 export type GetMeResult =
@@ -12,13 +13,15 @@ const unknownError = { ok: false, kind: 'unknown' } as const;
 export async function getMe(): Promise<GetMeResult> {
   let response: Response;
   try {
-    response = await fetch('/api/auth/me');
+    // Через обёртку: протухший access-токен она молча продлит и повторит запрос.
+    response = await authFetch('/api/auth/me');
   } catch {
-    // Сети нет или запрос оборвался: ответа не было вообще.
+    // Сети нет, запрос оборвался или не удалось продлить сессию: надёжного ответа нет.
     return unknownError;
   }
 
-  // 401 — нормальный ответ «не вошёл»: нет cookie, токен протух или пользователя удалили.
+  // 401 — нормальный ответ «не вошёл»: refresh тоже не помог (сессия кончилась или отозвана)
+  // либо пользователя удалили.
   if (response.status === 401) {
     return { ok: false, kind: 'unauthorized' };
   }

@@ -8,3 +8,4 @@ export { getMe } from './me';
 export type { GetMeResult } from './me';
 export { postLogout } from './logout';
 export type { LogoutResult } from './logout';
+export { authFetch } from './auth-fetch';
