@@ -24,7 +24,8 @@ describe('getMe', () => {
 
     await getMe();
 
-    expect(fetchMock).toHaveBeenCalledWith('/api/auth/me');
+    // Второй аргумент — init, который authFetch передаёт дальше; у getMe опций нет.
+    expect(fetchMock).toHaveBeenCalledWith('/api/auth/me', undefined);
   });
 
   it('200 с пользователем: возвращает пользователя', async () => {
@@ -45,10 +46,43 @@ describe('getMe', () => {
     await expect(getMe()).resolves.toEqual({ ok: false, kind: 'unknown' });
   });
 
-  it('401: unauthorized', async () => {
-    stubFetch(jsonResponse(401, { error: 'Unauthorized' }));
+  describe('протухший access-токен (подробно — в auth-fetch.test.ts)', () => {
+    // Ответы по очереди: /me, потом /refresh, потом повтор /me.
+    function stubSequence(...responses: Response[]) {
+      const fetchMock = vi.fn();
+      for (const response of responses) fetchMock.mockResolvedValueOnce(response);
+      vi.stubGlobal('fetch', fetchMock);
+      return fetchMock;
+    }
 
-    await expect(getMe()).resolves.toEqual({ ok: false, kind: 'unauthorized' });
+    it('401 → refresh удался → пользователь', async () => {
+      const fetchMock = stubSequence(
+        jsonResponse(401, { error: 'Unauthorized' }),
+        new Response(null, { status: 204 }),
+        jsonResponse(200, user),
+      );
+
+      await expect(getMe()).resolves.toEqual({ ok: true, user });
+      expect(fetchMock).toHaveBeenCalledWith('/api/auth/refresh', { method: 'POST' });
+    });
+
+    it('401 → refresh 401 (сессия кончилась): unauthorized', async () => {
+      stubSequence(
+        jsonResponse(401, { error: 'Unauthorized' }),
+        jsonResponse(401, { error: 'Unauthorized' }),
+      );
+
+      await expect(getMe()).resolves.toEqual({ ok: false, kind: 'unauthorized' });
+    });
+
+    it('401 → refresh 500: unknown, а не «не вошёл»', async () => {
+      stubSequence(
+        jsonResponse(401, { error: 'Unauthorized' }),
+        jsonResponse(500, { error: 'Internal Server Error' }),
+      );
+
+      await expect(getMe()).resolves.toEqual({ ok: false, kind: 'unknown' });
+    });
   });
 
   it('500 с JSON-телом: unknown', async () => {
