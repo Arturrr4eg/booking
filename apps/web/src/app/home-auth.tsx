@@ -1,11 +1,13 @@
 'use client';
 
 import Link from 'next/link';
-import { useAuth } from '@/features/auth/model/auth-context';
+import { useAuth, useAuthState } from '@/features/auth/model/auth-context';
 import { LogoutButton } from '@/features/auth/logout/logout-button';
 
+// Подвисает, пока сервер проверяет вход (useAuthState), — держать внутри <Suspense>.
 export function HomeAuth() {
-  const { state, refresh } = useAuth();
+  const state = useAuthState();
+  const { refresh } = useAuth();
 
   switch (state.status) {
     case 'loading':
@@ -26,7 +28,7 @@ export function HomeAuth() {
     case 'authenticated':
       return (
         <div className="flex flex-col items-center gap-2">
-          <p>Вы вошли как {state.user.name}</p>
+          <p elementtiming="user-name">Вы вошли как {state.user.name}</p>
           <LogoutButton />
         </div>
       );
